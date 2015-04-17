@@ -28,6 +28,15 @@ func (B Bucket) FindContact(contact *Contact) (res bool, node *list.Element) {
 	return
 }
 
+func (B Bucket) FindById(nodeId ID) (*Contact, error) {
+	for el := B.Contacts.Front(); el != nil; el = el.Next() {
+		if nodeId == el.Value.(*Contact).NodeID {
+			return el.Value.(*Contact), nil
+		}
+	}
+	return nil, &NotFoundError{nodeId, "Not found"}
+}
+
 func (B Bucket) IsFull() bool {
 	if B.Contacts.Len() == k {
 		return true
