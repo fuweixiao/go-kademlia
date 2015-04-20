@@ -35,8 +35,14 @@ type PongMessage struct {
 func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
 	// TODO: Finish implementation
 	pong.MsgID = CopyID(ping.MsgID)
-    // Specify the sender
+	// Specify the sender
+	pong.Sender = kc.kademlia.SelfContact
+
 	// Update contact, etc
+	// may cause race condition need to fix
+	BucketIdx := kc.kademlia.NodeID.Xor(ping.Sender.NodeID).PrefixLen()
+	kc.kademlia.Buckets[BucketIdx].UpdateBucket(&ping.Sender)
+
 	return nil
 }
 
@@ -57,6 +63,9 @@ type StoreResult struct {
 
 func (kc *KademliaCore) Store(req StoreRequest, res *StoreResult) error {
 	// TODO: Implement.
+	// may have error need to figure out whether to alloc new memory
+	kc.kademlia.Data[req.Key] = req.Value
+	res.MsgID = CopyID(req.MsgID)
 	return nil
 }
 
@@ -100,5 +109,11 @@ type FindValueResult struct {
 
 func (kc *KademliaCore) FindValue(req FindValueRequest, res *FindValueResult) error {
 	// TODO: Implement.
+	res.MsgID = CopyID(req.MsgID)
+	if Value, Ok := kc.kademlia.Data[req.Key]; Ok {
+		res.Value = Value
+	} else {
+		res.Value = nil
+	}
 	return nil
 }
