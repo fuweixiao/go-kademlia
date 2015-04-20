@@ -20,19 +20,20 @@ const (
 
 // Kademlia type. You can put whatever state you need in this.
 type Kademlia struct {
-	NodeID      ID
-	SelfContact Contact
-	Buckets     []Bucket
-	Host        net.IP
-	Port        uint16
-	Data        map[ID][]byte
+	NodeID        ID
+	SelfContact   Contact
+	Buckets       []Bucket
+	UpdateChannel chan *Contact
+	Data          map[ID][]byte
 }
 
 func NewKademlia(laddr string) *Kademlia {
 	// TODO: Initialize other state here as you add functionality.
 	k := new(Kademlia)
 	k.NodeID = NewRandomID()
-	k.Buckets = make([]Bucket, 0, b)
+	k.Buckets = make([]Bucket, b, b)
+	k.UpdateChannel = make(chan *Contact)
+	k.Data = make(map[ID][]byte)
 	for i := 0; i < b; i++ {
 		k.Buckets[i] = *(BuildBucket())
 	}
@@ -61,6 +62,10 @@ func NewKademlia(laddr string) *Kademlia {
 		}
 	}
 	k.SelfContact = Contact{k.NodeID, host, uint16(port_int)}
+
+	// Run a go routine to update KBuckets
+	go k.UpdateBucket(k.UpdateChannel)
+
 	return k
 }
 
@@ -105,7 +110,7 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 	var res StoreResult
 
 	//DialHTTP and call RPC
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.FormatInt(int64(contact.Port), 10))
 	if err != nil {
 		log.Fatal("DialHTTP: ", err)
 	}
@@ -123,7 +128,7 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
 	req := FindNodeRequest{k.SelfContact, NewRandomID(), searchKey}
 	var res FindNodeResult
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.FormatInt(int64(contact.Port), 10))
 	if err != nil {
 		log.Fatal("DialHTTP: ", err)
 	}
@@ -141,7 +146,7 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
 	req := FindValueRequest{k.SelfContact, NewRandomID(), searchKey}
 	var res FindValueResult
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.FormatInt(int64(contact.Port), 10))
 	if err != nil {
 		log.Fatal("DialHTTP: ", err)
 	}
@@ -181,12 +186,11 @@ func (k *Kademlia) InternalDoPing(host net.IP, port uint16, update bool) (PongMe
 	// real function to Do ping
 
 	// build ping messsage
-	ping := new(PingMessage)
-	ping.MsgID = NewRandomID()
+	ping := PingMessage{k.SelfContact, NewRandomID()}
 	var pong PongMessage
 
 	//dial client
-	client, err := rpc.DialHTTP("tcp", host.String()+strconv.FormatInt(int64(port), 10))
+	client, err := rpc.DialHTTP("tcp", host.String()+":"+strconv.FormatInt(int64(port), 10))
 	if err != nil {
 		log.Fatal("DialHTTP: ", err)
 	}
@@ -195,10 +199,37 @@ func (k *Kademlia) InternalDoPing(host net.IP, port uint16, update bool) (PongMe
 		log.Fatal("Call: ", err)
 	} else {
 		if update {
-			// do update
+			k.UpdateChannel <- &pong.Sender // do update
 		} else {
 			// do nothing
 		}
 	}
 	return pong, nil
+}
+
+func (k *Kademlia) UpdateBucket(UpdateChannel chan *Contact) {
+	for {
+		select {
+		case contact := <-UpdateChannel:
+			BucketIdx := k.NodeID.Xor(contact.NodeID).PrefixLen()
+			if BucketIdx == 160 {
+				break
+			}
+			Contacts := k.Buckets[BucketIdx].Contacts
+			if flag, node := k.Buckets[BucketIdx].FindContact(contact); flag {
+				Contacts.MoveToBack(node)
+			} else if k.Buckets[BucketIdx].IsFull() {
+				FirstContact := Contacts.Front().Value.(*Contact)
+				_, err := k.InternalDoPing(FirstContact.Host, FirstContact.Port, false)
+				if err != nil {
+					Contacts.Remove(Contacts.Front())
+					Contacts.PushBack(contact)
+				} else {
+					Contacts.MoveToBack(Contacts.Front())
+				}
+			} else {
+				k.Buckets[BucketIdx].Contacts.PushBack(contact)
+			}
+		}
+	}
 }

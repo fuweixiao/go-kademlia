@@ -40,9 +40,7 @@ func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
 
 	// Update contact, etc
 	// may cause race condition need to fix
-	BucketIdx := kc.kademlia.NodeID.Xor(ping.Sender.NodeID).PrefixLen()
-	kc.kademlia.Buckets[BucketIdx].UpdateBucket(&ping.Sender)
-
+	kc.kademlia.UpdateChannel <- &ping.Sender
 	return nil
 }
 
@@ -86,6 +84,15 @@ type FindNodeResult struct {
 
 func (kc *KademliaCore) FindNode(req FindNodeRequest, res *FindNodeResult) error {
 	// TODO: Implement.
+	SearchKey := req.NodeID
+	contact, _ := kc.kademlia.FindContact(SearchKey)
+	// need to fix
+	if contact != nil {
+		res.Nodes = append(res.Nodes, *contact)
+	} else {
+		res.Nodes = append(res.Nodes, kc.kademlia.SelfContact)
+	}
+	res.MsgID = req.MsgID
 	return nil
 }
 

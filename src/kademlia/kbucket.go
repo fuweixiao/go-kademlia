@@ -43,13 +43,3 @@ func (B Bucket) IsFull() bool {
 	}
 	return false
 }
-
-func (B Bucket) UpdateBucket(contact *Contact) {
-	if flag, node := B.FindContact(contact); flag {
-		B.Contacts.MoveToBack(node)
-	} else if B.IsFull() {
-		return
-	} else {
-		B.Contacts.PushBack(contact)
-	}
-}
