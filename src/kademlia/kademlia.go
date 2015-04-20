@@ -88,31 +88,80 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	pong, err := k.InternalDoPing(host, port, true)
+	if err != nil {
+		return "ERROR"
+	} else {
+		return "OK: " + pong.MsgID.AsString()
+	}
 }
 
 func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+
+	//build store request
+	req := StoreRequest{k.SelfContact, NewRandomID(), key, value}
+	var res StoreResult
+
+	//DialHTTP and call RPC
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	if err != nil {
+		log.Fatal("DialHTTP: ", err)
+	}
+	err = client.Call("KademliaCore.Store", req, &res)
+	if err != nil {
+		log.Fatal("Call: ", err)
+		return "ERROR"
+	} else {
+		return "OK: " + res.MsgID.AsString()
+	}
 }
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	req := FindNodeRequest{k.SelfContact, NewRandomID(), searchKey}
+	var res FindNodeResult
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	if err != nil {
+		log.Fatal("DialHTTP: ", err)
+	}
+	err = client.Call("KademliaCore.FindNode", req, &res)
+	if err != nil {
+		log.Fatal("Call: ", err)
+		return "ERROR"
+	} else {
+		return "OK: " + res.MsgID.AsString()
+	}
 }
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	req := FindValueRequest{k.SelfContact, NewRandomID(), searchKey}
+	var res FindValueResult
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+strconv.FormatInt(int64(contact.Port), 10))
+	if err != nil {
+		log.Fatal("DialHTTP: ", err)
+	}
+	err = client.Call("KademliaCore.FindValue", req, &res)
+	if err != nil {
+		log.Fatal("Call: ", err)
+		return "ERROR"
+	} else {
+		return "OK: " + res.MsgID.AsString()
+	}
 }
 
 func (k *Kademlia) LocalFindValue(searchKey ID) string {
 	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	if value, ok := k.Data[searchKey]; ok {
+		return "OK: " + string(value)
+	} else {
+		return "ERROR"
+	}
 }
 
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
@@ -126,4 +175,30 @@ func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	// For project 2!
 	return "ERR: Not implemented"
+}
+
+func (k *Kademlia) InternalDoPing(host net.IP, port uint16, update bool) (PongMessage, error) {
+	// real function to Do ping
+
+	// build ping messsage
+	ping := new(PingMessage)
+	ping.MsgID = NewRandomID()
+	var pong PongMessage
+
+	//dial client
+	client, err := rpc.DialHTTP("tcp", host.String()+strconv.FormatInt(int64(port), 10))
+	if err != nil {
+		log.Fatal("DialHTTP: ", err)
+	}
+	err = client.Call("KademliaCore.Ping", ping, &pong)
+	if err != nil {
+		log.Fatal("Call: ", err)
+	} else {
+		if update {
+			// do update
+		} else {
+			// do nothing
+		}
+	}
+	return pong, nil
 }
